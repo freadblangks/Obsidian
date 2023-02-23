@@ -5,13 +5,17 @@ using Obsidian.Data;
 using Obsidian.Services;
 using Photino.Blazor;
 using PhotinoAPI;
+using PInvoke;
+using System.Runtime.InteropServices;
 
 namespace Obsidian;
 
 public class Program
 {
+    private static IntPtr _originalWndProc;
+
     [STAThread]
-    static void Main(string[] args)
+    static unsafe void Main(string[] args)
     {
         PhotinoBlazorAppBuilder builder = PhotinoBlazorAppBuilder.CreateDefault(args);
 
@@ -40,11 +44,10 @@ public class Program
         app.MainWindow
             .SetIconFile("favicon.ico")
             .SetTitle("Obsidian")
-            .Center()
-            .SetWidth(1600)
-            .SetHeight(1100)
             .SetContextMenuEnabled(false)
             .RegisterApi(new());
+
+        app.MainWindow.UseOsDefaultSize = true;
 
 #if DEBUG
         app.MainWindow.SetDevToolsEnabled(true);
@@ -54,6 +57,25 @@ public class Program
             app.MainWindow.OpenAlertWindow("Fatal exception", error.ExceptionObject.ToString());
         };
 
+        app.MainWindow.WindowCreated += (sender, e) =>
+        {
+            _originalWndProc = HijackWndProc(HandleMessage, app.MainWindow.WindowHandle);
+        };
+
         app.Run();
+    }
+
+    private static IntPtr HijackWndProc(User32.WndProc wndProc, IntPtr hWnd)
+    {
+        IntPtr wndProcPtr = Marshal.GetFunctionPointerForDelegate(wndProc);
+
+        return User32.SetWindowLongPtr(hWnd, User32.WindowLongIndexFlags.GWL_WNDPROC, wndProcPtr);
+    }
+
+    private static unsafe IntPtr HandleMessage(IntPtr hWnd, User32.WindowMessage msg, void* wParam, void* lParam)
+    {
+        Console.WriteLine(msg.ToString());
+
+        return User32.DefWindowProc(hWnd, msg, (nint)wParam, (nint)lParam);
     }
 }
